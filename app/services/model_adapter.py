@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import os
+import re
 import time
 from dataclasses import dataclass
 from typing import Literal
@@ -13,8 +14,18 @@ from PIL import ImageDraw
 from PIL import ImageFont
 import requests
 from ultralytics import YOLO
+from ultralytics.utils.plotting import colors
 
 from app.core.config import settings
+
+# 污渍分类名称
+CLASS_NAMES = {0: "light", 1: "moderate", 2: "severe"}
+# 污渍分类颜色 (十六进制)
+CLASS_COLORS = {
+    0: colors.hex2rgb("#ADD8E6"),  # 浅蓝
+    1: colors.hex2rgb("#00FFFF"),  # 青色
+    2: colors.hex2rgb("#0000CD"),  # 深蓝
+}
 
 
 InferenceMode = Literal["local", "cloud"]
@@ -87,15 +98,6 @@ def _render_cloud_prediction(
     width = max(image.width, 1)
     height = max(image.height, 1)
 
-    palette = [
-        "#E53935",
-        "#1E88E5",
-        "#43A047",
-        "#FB8C00",
-        "#8E24AA",
-        "#00897B"
-    ]
-
     font: ImageFont.ImageFont | ImageFont.FreeTypeFont
     try:
         font = ImageFont.truetype("arial.ttf", 18)
@@ -105,20 +107,65 @@ def _render_cloud_prediction(
         except OSError:
             font = ImageFont.load_default()
 
-    label_color_map: dict[str, tuple[int, int, int]] = {}
-
     def get_label_color(label_name: str) -> tuple[int, int, int]:
-        if label_name not in label_color_map:
-            palette_index = abs(hash(label_name)) % len(palette)
-            label_color_map[label_name] = ImageColor.getrgb(palette[palette_index])
-        return label_color_map[label_name]
+        """根据标签名称返回对应的RGB颜色"""
+        class_id = None
+        
+        # 尝试从CLASS_NAMES中获取索引
+        for cid, name in CLASS_NAMES.items():
+            if label_name.lower() == name.lower():
+                class_id = cid
+                break
+        
+        # 如果不匹配，尝试从"class0"、"Class 0"这样的格式中提取数字
+        if class_id is None:
+            match = re.search(r'class\s*(\d+)', label_name.lower())
+            if match:
+                try:
+                    class_id = int(match.group(1))
+                except (ValueError, TypeError):
+                    pass
+        
+        # 尝试直接转换为整数
+        if class_id is None:
+            try:
+                class_id = int(label_name)
+            except (ValueError, TypeError):
+                pass
+        
+        # 获取对应的颜色，如果找到则返回
+        if class_id is not None and class_id in CLASS_COLORS:
+            rgb = CLASS_COLORS.get(class_id)
+            if rgb is not None:
+                return rgb
+        
+        # 默认颜色（浅蓝）
+        return CLASS_COLORS.get(0, (173, 216, 230))
 
     for row in raw_results:
-        label = str(row.get("name") or "stain")
+        label_raw = str(row.get("name") or "stain")
         confidence = float(row.get("confidence") or 0.0)
-        rgb = get_label_color(label)
-        outline = (rgb[0], rgb[1], rgb[2], 255)
-        fill = (rgb[0], rgb[1], rgb[2], 72)
+        
+        # 处理标签：将"class0"、"Class 0"转换为CLASS_NAMES中的名称
+        label = label_raw
+        match = re.search(r'class\s*(\d+)', label_raw.lower())
+        if match:
+            try:
+                class_id = int(match.group(1))
+                label = CLASS_NAMES.get(class_id, label_raw)
+            except (ValueError, TypeError):
+                pass
+        else:
+            try:
+                class_id = int(label_raw)
+                label = CLASS_NAMES.get(class_id, label_raw)
+            except (ValueError, TypeError):
+                pass
+        
+        rgb = get_label_color(label_raw)
+        # RGB元组转为包含透明度的RGBA
+        outline = (int(rgb[0]), int(rgb[1]), int(rgb[2]), 255)
+        fill = (int(rgb[0]), int(rgb[1]), int(rgb[2]), 72)
 
         segments = row.get("segments") or {}
         xs = segments.get("x") or []
@@ -177,6 +224,17 @@ def _load_model() -> YOLO:
         )
 
     _model = YOLO(model_path)
+    
+    # 设置模型的类名
+    if hasattr(_model, "model") and _model.model is not None:
+        _model.model.names = CLASS_NAMES
+    if hasattr(_model, "predictor") and _model.predictor is not None and hasattr(_model.predictor, "model"):
+        _model.predictor.model.names = CLASS_NAMES
+    
+    # 设置调色板颜色
+    for class_id, rgb in CLASS_COLORS.items():
+        colors.palette[class_id] = rgb
+    
     return _model
 
 
@@ -335,8 +393,25 @@ def _detect_cloud(image_bytes: bytes, content_type: str) -> ModelResult:
     best_label: str | None = None
 
     for row in raw_results:
-        label = str(row.get("name") or "stain")
+        label_raw = str(row.get("name") or "stain")
         confidence = float(row.get("confidence") or 0.0)
+        
+        # 处理标签：将"class0"、"Class 0"转换为CLASS_NAMES中的名称
+        label = label_raw
+        match = re.search(r'class\s*(\d+)', label_raw.lower())
+        if match:
+            try:
+                class_id = int(match.group(1))
+                label = CLASS_NAMES.get(class_id, label_raw)
+            except (ValueError, TypeError):
+                pass
+        else:
+            try:
+                class_id = int(label_raw)
+                label = CLASS_NAMES.get(class_id, label_raw)
+            except (ValueError, TypeError):
+                pass
+        
         box = row.get("box") or {}
 
         x1_raw = float(box.get("x1") or 0.0)
