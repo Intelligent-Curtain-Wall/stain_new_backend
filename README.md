@@ -13,37 +13,91 @@ cd backend
 start.bat
 ```
 
-## Docker 部署
+##  systemd 部署
 
-### 1. 准备环境变量
-
-复制 [.env.example](.env.example) 为 `.env`，然后把里面的 MySQL、OSS、JWT 和模型相关配置改成你自己的值。
-
-### 2. 构建镜像
+### systemd 配置
 
 ```bash
-docker build -t stain-backend:latest .
+sudo nano /etc/systemd/system/stain-backend.service
 ```
 
-### 3. 启动容器
+写入以下内容：
+
+```ini
+[Unit]
+Description=Stain Detection FastAPI Backend
+After=network.target
+
+[Service]
+Type=simple
+User=ecs-user
+WorkingDirectory=/home/ecs-user/stain_new_backend
+Environment="PATH=/home/ecs-user/anaconda3/envs/stain_backend/bin:/home/ecs-user/anaconda3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/home/ecs-user/anaconda3/envs/stain_backend/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8081 --reload
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### 操作步骤
 
 ```bash
-docker run -d --name stain-backend \
-	--env-file .env \
-	-p 8081:8081 \
-	--restart unless-stopped \
-	stain-backend:latest
+# 1. 创建服务文件
+sudo nano /etc/systemd/system/stain-backend.service
+
+# 2. 粘贴上面的配置，保存退出
+
+# 3. 重新加载 systemd
+sudo systemctl daemon-reload
+
+# 4. 启动服务
+sudo systemctl start stain-backend.service
+
+# 5. 设置开机自启
+sudo systemctl enable stain-backend.service
+
+# 6. 查看状态
+sudo systemctl status stain-backend.service
+
+# 7. 查看日志（如果有问题）
+sudo journalctl -u stain-backend -f
 ```
 
-### 4. 验证服务
+### 验证服务
 
-浏览器访问：
+```bash
+# 查看服务状态
+sudo systemctl status stain-backend
 
-```text
-http://localhost:8081/api/health
+# 测试 API
+curl http://localhost:8081/api/health
+
+# 查看实时日志
+sudo journalctl -u stain-backend -f
 ```
 
-### 5. 生产部署建议
+### 常用管理命令
+
+```bash
+# 重启服务
+sudo systemctl restart stain-backend.service
+
+# 停止服务
+sudo systemctl stop stain-backend.service
+
+# 查看日志（最近50行）
+sudo journalctl -u stain-backend -n 50
+
+# 查看实时日志
+sudo journalctl -u stain-backend -f
+
+# 禁用开机自启（如果需要）
+sudo systemctl disable stain-backend.service
+```
+
+## 生产部署建议
 
 - 如果要连接外部 MySQL，确保容器能访问数据库地址和端口。
 - 如果 `models/best.pt` 不是默认路径，可以在 `.env` 里设置 `YOLO_MODEL_PATH`。
