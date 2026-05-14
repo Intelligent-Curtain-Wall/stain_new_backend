@@ -68,9 +68,9 @@ def _polygon_area(xs: list[float], ys: list[float]) -> float:
     return abs(area) * 0.5
 
 
-def _to_png_bytes(image: Image.Image) -> bytes:
+def _to_jpeg_bytes(image: Image.Image, quality: int = 85) -> bytes:
     buffer = io.BytesIO()
-    image.save(buffer, format="PNG")
+    image.save(buffer, format="JPEG", quality=quality)
     return buffer.getvalue()
 
 
@@ -208,7 +208,7 @@ def _render_cloud_prediction(
         )
         draw.text((text_x, text_y), tag_text, fill=(255, 255, 255, 255), font=font)
 
-    return _to_png_bytes(rendered.convert("RGB"))
+    return _to_jpeg_bytes(rendered.convert("RGB"))
 
 
 def _load_model() -> YOLO:
@@ -309,7 +309,7 @@ def _detect_local(image_bytes: bytes, content_type: str) -> ModelResult:
         rgb_plot = plotted[..., ::-1] if isinstance(plotted, np.ndarray) and plotted.ndim == 3 else plotted
         plotted_image = Image.fromarray(rgb_plot)
         buffer = io.BytesIO()
-        plotted_image.save(buffer, format="PNG")
+        plotted_image.save(buffer, format="JPEG", quality=85)
         processed_image_bytes = buffer.getvalue()
 
     if stain_detected:
@@ -328,7 +328,7 @@ def _detect_local(image_bytes: bytes, content_type: str) -> ModelResult:
         overall_cleanliness=overall_cleanliness,
         regions=regions,
         processed_image_bytes=processed_image_bytes,
-        processed_image_content_type="image/png" if processed_image_bytes else None
+        processed_image_content_type="image/jpeg" if processed_image_bytes else None
     )
 
 
@@ -487,7 +487,7 @@ def _detect_cloud(image_bytes: bytes, content_type: str) -> ModelResult:
         overall_cleanliness=overall_cleanliness,
         regions=regions,
         processed_image_bytes=processed_image_bytes,
-        processed_image_content_type="image/png"
+        processed_image_content_type="image/jpeg"
     )
 
 
