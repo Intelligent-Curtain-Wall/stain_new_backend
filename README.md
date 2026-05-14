@@ -6,120 +6,146 @@
 - 调用模型适配器执行检测（同步/异步混合模式）
 - 将任务、图片元数据、检测结果写入 MySQL
 
-## Quick Start
+---
+
+## 目录结构
+
+```
+stain_new_backend/
+├── app/                    # 应用代码
+│   ├── api/                # API 路由
+│   ├── core/               # 配置、认证等核心模块
+│   ├── schemas/            # 数据模型
+│   ├── services/           # 业务逻辑（模型推理、数据库操作）
+│   ├── workers/            # 后台任务
+│   └── main.py             # 应用入口
+├── models/                 # YOLO 模型文件（需自行放入 best.pt）
+├── sql/                    # 数据库建表脚本
+├── .env                    # 环境变量配置
+├── .env.example            # 环境变量模板
+├── .dockerignore           # Docker 构建排除规则
+├── Dockerfile              # Docker 镜像构建文件
+├── docker-compose.yml      # Docker Compose 编排文件
+├── DEPLOY.md               # Docker 部署详细指南
+├── requirements.txt        # Python 依赖
+└── start.bat               # 本地开发启动脚本
+```
+
+---
+
+## Docker 部署（推荐）
+
+### 前置条件
+
+- Docker Engine >= 24.0
+- Docker Compose >= 2.20
+- 服务器内存 >= 4GB（推荐 8GB）
+
+### 快速部署
 
 ```bash
-cd backend
+# 1. 放入 YOLO 模型文件
+cp /path/to/best.pt models/
+
+# 2. 配置环境变量
+cp .env.example .env
+# 编辑 .env 填入 MySQL、OSS、JWT 等实际配置
+
+# 3. 初始化数据库
+mysql -h your-mysql-host -u stain -p stain < sql/final_detection_schema.sql
+
+# 4. 构建并启动
+docker compose up -d --build
+
+# 5. 验证服务
+curl http://localhost:8081/api/health
+```
+
+### 常用命令
+
+```bash
+# 查看状态
+docker compose ps
+
+# 查看日志
+docker compose logs -f
+
+# 重启
+docker compose restart
+
+# 停止
+docker compose stop
+
+# 更新代码后重新构建
+docker compose up -d --build
+```
+
+> 详细部署说明请参考 [DEPLOY.md](./DEPLOY.md)。
+
+---
+
+## 本地开发
+
+```bash
+# 创建虚拟环境
+python -m venv venv
+source venv/bin/activate  # Linux/Mac
+# venv\Scripts\activate   # Windows
+
+# 安装依赖
+pip install -r requirements.txt
+
+# 启动开发服务器（热重载）
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8081 --reload
+
+# 或直接运行脚本
 start.bat
 ```
 
-##  systemd 部署
+---
 
-### systemd 配置
+## 环境变量说明
 
-```bash
-sudo nano /etc/systemd/system/stain-backend.service
-```
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `MYSQL_HOST` | MySQL 地址 | `8.159.143.133` |
+| `MYSQL_PORT` | MySQL 端口 | `3306` |
+| `MYSQL_USER` | MySQL 用户名 | `stain` |
+| `MYSQL_PASSWORD` | MySQL 密码 | `stain` |
+| `MYSQL_DATABASE` | MySQL 数据库名 | `stain` |
+| `OSS_BASE_URL` | OSS 对象存储地址 | `http://8.159.143.133:9000` |
+| `OSS_USERNAME` | OSS 用户名 | `stain-detection` |
+| `OSS_PASSWORD` | OSS 密码 | - |
+| `JWT_SECRET` | JWT 签名密钥 | - |
+| `CORS_ORIGINS` | 允许跨域的前端地址 | `http://localhost:80` |
+| `SYNC_SIZE_THRESHOLD_BYTES` | 同步/异步处理阈值（字节） | `2097152` (2MB) |
+| `YOLO_MODEL_PATH` | YOLO 模型路径 | `models/best.pt` |
+| `YOLO_CONFIDENCE_THRESHOLD` | 检测置信度阈值 | `0.25` |
+| `CLOUD_MODEL_URL` | 云端模型 API 地址 | - |
+| `CLOUD_MODEL_API_KEY` | 云端模型 API 密钥 | - |
+| `CLOUD_MODEL_TIMEOUT_SECONDS` | 云端模型超时时间 | `60` |
 
-写入以下内容：
-
-```ini
-[Unit]
-Description=Stain Detection FastAPI Backend
-After=network.target
-
-[Service]
-Type=simple
-User=ecs-user
-WorkingDirectory=/home/ecs-user/stain_new_backend
-Environment="PATH=/home/ecs-user/anaconda3/envs/stain_backend/bin:/home/ecs-user/anaconda3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-ExecStart=/home/ecs-user/anaconda3/envs/stain_backend/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8081 --reload
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-```
-
-### 操作步骤
-
-```bash
-# 1. 创建服务文件
-sudo nano /etc/systemd/system/stain-backend.service
-
-# 2. 粘贴上面的配置，保存退出
-
-# 3. 重新加载 systemd
-sudo systemctl daemon-reload
-
-# 4. 启动服务
-sudo systemctl start stain-backend.service
-
-# 5. 设置开机自启
-sudo systemctl enable stain-backend.service
-
-# 6. 查看状态
-sudo systemctl status stain-backend.service
-
-# 7. 查看日志（如果有问题）
-sudo journalctl -u stain-backend -f
-```
-
-### 验证服务
-
-```bash
-# 查看服务状态
-sudo systemctl status stain-backend
-
-# 测试 API
-curl http://localhost:8081/api/health
-
-# 查看实时日志
-sudo journalctl -u stain-backend -f
-```
-
-### 常用管理命令
-
-```bash
-# 重启服务
-sudo systemctl restart stain-backend.service
-
-# 停止服务
-sudo systemctl stop stain-backend.service
-
-# 查看日志（最近50行）
-sudo journalctl -u stain-backend -n 50
-
-# 查看实时日志
-sudo journalctl -u stain-backend -f
-
-# 禁用开机自启（如果需要）
-sudo systemctl disable stain-backend.service
-```
-
-## 生产部署建议
-
-- 如果要连接外部 MySQL，确保容器能访问数据库地址和端口。
-- 如果 `models/best.pt` 不是默认路径，可以在 `.env` 里设置 `YOLO_MODEL_PATH`。
-- 如果前端和后端分开部署，请把 `CORS_ORIGINS` 改成前端实际域名。
-- 建议在服务器上配一个反向代理，例如 Nginx 或 Caddy，再把 80/443 转发到容器的 8081 端口。
+---
 
 ## API
 
-- `GET /api/health`
-- `POST /api/detections`
-- `GET /api/detections`
-- `GET /api/detections/{id}`
-- `POST /api/detections/{id}/retry`
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/api/health` | 健康检查 |
+| `POST` | `/api/detections` | 创建检测任务 |
+| `GET` | `/api/detections` | 获取检测任务列表 |
+| `GET` | `/api/detections/{id}` | 获取检测任务详情 |
+| `POST` | `/api/detections/{id}/retry` | 重试失败的检测任务 |
 
 `POST /api/detections` 支持额外表单字段：
 
-- `inference_mode`: `local`(默认) 或 `cloud`
+- `inference_mode`: `local`（默认，本地 YOLO 推理）或 `cloud`（云端模型推理）
 
-## Notes
+---
 
-- YOLO 模型默认读取 `models/best.pt`。你可以直接将模型文件放到该路径。
-- 若模型路径不同，设置环境变量 `YOLO_MODEL_PATH` 指向实际位置。
-- 当前 `app/services/model_adapter.py` 已接入 `ultralytics` 推理。
-- 云端模型可通过 `.env` 配置：`CLOUD_MODEL_URL`、`CLOUD_MODEL_API_KEY`。
-- 请先执行 `sql/final_detection_schema.sql` 初始化 MySQL 表结构。
+## 注意事项
+
+- YOLO 模型文件 `models/best.pt` 需自行准备，未包含在代码仓库中
+- 首次部署前请先执行 `sql/final_detection_schema.sql` 初始化 MySQL 表结构
+- 如果前端和后端分开部署，请将 `CORS_ORIGINS` 改为前端实际域名
+- 生产环境建议在 Nginx 中配置 `proxy_read_timeout 300s;` 避免大图处理超时（详见 [DEPLOY.md](./DEPLOY.md)）
