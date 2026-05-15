@@ -465,7 +465,7 @@ def _detect_cloud(image_bytes: bytes, content_type: str) -> ModelResult:
         )
 
     stain_detected = len(regions) > 0
-    base_ratio = min(max(polygon_ratio_sum, affected_ratio_sum), 1.0)
+    base_ratio = polygon_ratio_sum if polygon_ratio_sum > 0 else min(affected_ratio_sum, 1.0)
     affected_area = round(base_ratio * 100, 2)
     overall_cleanliness = round(max(0.0, 100 - affected_area), 2)
     runtime_ms = int((time.perf_counter() - started_at) * 1000)
