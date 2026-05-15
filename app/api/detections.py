@@ -168,3 +168,39 @@ def get_detection_image_signed_url(
         })
     except Exception as error:  # noqa: BLE001
         return fail(f"Get signed url failed: {error}", 500)
+
+
+@router.delete("/{task_id}")
+def delete_detection(
+    task_id: str,
+    user_id: str = Depends(get_current_user_id),
+) -> dict:
+    repo, error_response = _get_repo_or_fail()
+    if error_response:
+        return error_response
+    assert repo is not None
+    try:
+        repo.delete_task(task_id, user_id)
+        return ok(None, "Task deleted")
+    except Exception as error:  # noqa: BLE001
+        return fail(f"Delete detection failed: {error}", 500)
+
+
+@router.delete("/batch/delete")
+async def batch_delete_detections(
+    user_id: str = Depends(get_current_user_id),
+    task_ids: str = Query(..., description="Comma-separated task IDs"),
+) -> dict:
+    repo, error_response = _get_repo_or_fail()
+    if error_response:
+        return error_response
+    assert repo is not None
+    try:
+        ids = [tid.strip() for tid in task_ids.split(",") if tid.strip()]
+        if not ids:
+            return fail("No task IDs provided", 400)
+        for task_id in ids:
+            repo.delete_task(task_id, user_id)
+        return ok(None, f"{len(ids)} tasks deleted")
+    except Exception as error:  # noqa: BLE001
+        return fail(f"Batch delete failed: {error}", 500)

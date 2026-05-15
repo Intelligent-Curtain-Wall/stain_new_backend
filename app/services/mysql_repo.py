@@ -526,3 +526,18 @@ class MySQLRepository:
             "update detection_results set status = %s, error_message = null, updated_at = %s where task_id = %s and user_id = %s",
             ("pending", now, task_id, user_id),
         )
+
+    def delete_task(self, task_id: str, user_id: str) -> None:
+        self._execute("delete from result_regions where task_id = %s", (task_id,))
+        self._execute(
+            "delete from detection_results where task_id = %s and user_id = %s",
+            (task_id, user_id),
+        )
+        self._execute(
+            "delete from task_images where task_id = %s and user_id = %s",
+            (task_id, user_id),
+        )
+        self._execute(
+            "delete from inspection_tasks where id = %s and user_id = %s",
+            (task_id, user_id),
+        )
