@@ -9,4 +9,5 @@ services:
     volumes:
       - ./models:/app/models
       - ./.env:/app/.env
+      - ./app:/app/app
     restart: unless-stopped
